@@ -21,6 +21,7 @@ class BroadcastStates(StatesGroup):
     text = State()
 
 class CheckoutStates(StatesGroup):
+    comment = State()
     payment = State()
     wait_payment = State()
     confirm = State()

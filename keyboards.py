@@ -3,6 +3,7 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from config import ADMIN_IDS
 import database as db
 
@@ -122,6 +123,15 @@ def get_product_keyboard(product_id, is_admin=False):
     if is_admin:
         builder.row(InlineKeyboardButton(text="🗑 Удалить товар", callback_data=f"delete_{product_id}"))
     return builder.as_markup()
+
+def get_comment_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🚀 Пропустить")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
 
 def get_confirm_reset_kb():
     builder = InlineKeyboardBuilder()

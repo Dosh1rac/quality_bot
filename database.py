@@ -197,15 +197,28 @@ def init_db():
 
 # --- ФУНКЦИИ ЗАКАЗОВ ---
 
-def create_order(user_id, items_json, total, total_cost, username, payment_method):
+def create_order(user_id, items_json, total, total_cost, username, payment_method, comment):
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Добавляем comment в список колонок и в VALUES
     cursor.execute('''
-        INSERT INTO orders (user_id, items, total_amount, total_cost, username, payment_method, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (user_id, items_json, total, total_cost, username, payment_method, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        INSERT INTO orders (user_id, items, total_amount, total_cost, username, payment_method, comment, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        user_id, 
+        items_json, 
+        total, 
+        total_cost, 
+        username, 
+        payment_method, 
+        comment, # <-- Передаем сам комментарий
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ))
     order_id = cursor.lastrowid
+    
+    # Обновляем статистику пользователя
     cursor.execute('UPDATE users SET total_spent = total_spent + ? WHERE user_id = ?', (total, user_id))
+    
     conn.commit()
     conn.close()
     return order_id

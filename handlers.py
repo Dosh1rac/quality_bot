@@ -351,21 +351,51 @@ async def checkout_start(callback: CallbackQuery, state: FSMContext):
             return
     
     total = db.get_cart_total(callback.from_user.id)
+    # Сохраняем данные корзины заранее
     await state.update_data(items=items, total=total)
+    
+    # Меняем логику: сначала спрашиваем комментарий
+    text = (
+        f"<b>📝 КОММЕНТАРИЙ К ЗАКАЗУ</b>\n\n"
+        f"Сумма заказа: <b>{total} руб.</b>\n\n"
+        f"Напишите уточнение к заказу (например, желаемый вкус) или нажмите кнопку ниже, чтобы пропустить:"
+    )
+    
+    await callback.message.delete()
+    # Отправляем сообщение с кнопкой пропуска
+    await callback.message.answer(
+        text, 
+        parse_mode="HTML", 
+        reply_markup=kb.get_comment_keyboard() # Создай эту кнопку в файле кнопок (kb)
+    )
+    
+    # Устанавливаем состояние ожидания комментария
+    await state.set_state(CheckoutStates.comment)
+    await callback.answer()
+
+@router.message(CheckoutStates.comment)
+async def process_order_comment(message: Message, state: FSMContext):
+    # Сохраняем комментарий (если нажата кнопка пропуска — пишем "Нет")
+    comment_text = message.text
+    if comment_text == "🚀 Пропустить":
+        comment_text = "Не указан"
+    
+    await state.update_data(order_comment=comment_text)
+    
+    # Теперь показываем выбор оплаты (то, что было у тебя раньше)
+    data = await state.get_data()
+    total = data.get('total')
     
     text = f"<b>💳 ВЫБОР СПОСОБА ОПЛАТЫ</b>\n\n"
     text += f"Сумма заказа: <b>{total} руб.</b>\n\n"
     text += "Выберите способ оплаты:"
     
-    # Удаляем старое сообщение и отправляем новое
-    await callback.message.delete()
-    await callback.message.answer(
+    await message.answer(
         text, 
         parse_mode="HTML", 
-        reply_markup=kb.get_payment_keyboard()
+        reply_markup=kb.get_payment_keyboard() # Твоя старая клавиатура оплаты
     )
     await state.set_state(CheckoutStates.payment)
-    await callback.answer()
 
 async def checkout_payment(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Выбор способа оплаты"""
@@ -428,6 +458,9 @@ async def create_order_from_data(callback, state, bot, data):
     total = data.get('total', 0)
     payment_method = data.get('payment_method', 'cash')
     
+    # --- НОВОЕ: Извлекаем комментарий ---
+    order_comment = data.get('order_comment', 'Не указан')
+    
     total_cost = 0
     items_list = []
     
@@ -447,7 +480,9 @@ async def create_order_from_data(callback, state, bot, data):
                 db.update_product_stock(item['id'], -item['quantity'])
     
     items_json = json.dumps(items_list, ensure_ascii=False)
-    order_id = db.create_order(user_id, items_json, total, total_cost, username, payment_method)
+    
+    # --- НОВОЕ: Передаем order_comment в базу (проверь аргументы в db.create_order) ---
+    order_id = db.create_order(user_id, items_json, total, total_cost, username, payment_method, order_comment)
     
     # Очистка корзины в БД
     db.clear_cart(user_id)
@@ -460,11 +495,16 @@ async def create_order_from_data(callback, state, bot, data):
         f"━━━━━━━━━━━━━━━━━━\n"
         f"👤 Покупатель: @{username if username else 'без юзернейма'}\n"
         f"💳 Оплата: {'Карта' if payment_method == 'card' else 'Наличные'}\n"
+        f"💬 <b>Комментарий:</b> {order_comment}\n" # --- НОВОЕ: Добавили в текст ---
+        f"━━━━━━━━━━━━━━━━━━\n"
         f"💰 Выручка: {total} руб.\n"
         f"📦 Себестоимость: {total_cost} руб.\n"
         f"📈 Прибыль: {profit} руб.\n"
         f"━━━━━━━━━━━━━━━━━━"
     )
+    
+    # Не забудь отправить сообщение админу (у тебя в коде выше этот кусок обрезался)
+    await bot.send_message(config.ADMIN_ID, admin_text, parse_mode="HTML")
     
     # Рассылка админам (в фоне, чтобы не тормозить юзера)
     for admin_id in config.ADMIN_IDS:
